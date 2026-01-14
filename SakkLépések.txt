@@ -1,0 +1,45 @@
+Lépések:
+- Paraszt:
+	- Minden parasztnak a legelső lépésekor lehetősége van 2-tőt előre lépni.
+	- Ezt követően csak 1 lépést léphet előre.
+	- Leütni csak srégen tud, bal és jobb irányba és csak előre, ide csak akkor léphet, ha az adott területen van ellenfél.
+- Bástya: 
+	- Minden bástyának vízszintesen és horizontálisan is korlátlan lépése van (természetesen addig míg nem ütközik akadályba)
+	- Csak a fentebb említett irányokba tud támadni.
+- Huszár:
+	- Minden lovasnak L alakban tud ütni, 3 lépés X irányba, egyet pedig balra vagy jobbra. - Nyílván ha van helye, illetve lehetősége. [Saját bábúra nem léphet]
+- Futó:
+	- Csak srégen tud lépni, az egyik csak a fehér mezőkön a másik csak a feketén, hasonlóképpen mozog mint a bástya.
+- Vezér:
+	- Azon lépések összeségét tudja mint a bástya és a futó.
+- Király: 
+	- A körülötte lévő 8 mezőre tud lépni.
+
+Végeredmények:
+- Döntetlen:
+	- Megegyezés: a játék során bármikor megegyezhetnek a játékosok döntetlenben. Például akkor, ha látják, hogy előbb-utóbb a másik négy eset valamelyike fog fennállni.
+	- Patt: a soron következő játékos nem tud lépni, de nincs sakkban. Lásd: Patt.
+	- Nincs elegendő mattadó erő: olyan kevés figura maradt a táblán, hogy azokból lehetetlen mattot előállítani. Például ha a két király egyedül maradt, vagy ha rajtuk kívül csak egyetlen futó vagy huszár maradt. Lásd az alapmattokat lejjebb.
+	- Ötven lépés szabálya: ha egymást követő ötven olyan lépéspár történik, amelyek között nem volt sem ütés, sem gyaloglépés, akkor bármelyik játékos kérhet döntetlent a másik beleegyezése nélkül is.
+	- Háromszori tükörkép: ha harmadszor jelenik meg ugyanaz az állás a táblán úgy, hogy ugyanaz lép, és ugyanazok a lehetőségek (sáncolás, en passant), akkor bármelyik játékos kérhet döntetlent a másik beleegyezése nélkül is.
+- Nyertes:
+	- Ha Sakk-mattba teszed az ellenfél királyát
+	- Ha az ellenfeled feladja a játékot
+- Vereség:
+	- Ha Sakk-mattba kerül a királyod
+	- Ha feladod a játékot.
+
+Fogalmak:
+- Sakk:
+	- Ez az amikor a királya éppen aktív leütés alá kerül.
+- Sakk-matt:
+	- Ez akkor van, amikor a királya éppen aktív leütés alatt áll, illetve nem tud sehová sem lépni.
+
+Jelölések:
+- Citrom sárga a kocka szín - Ezt kijelölted
+- Adott mezőkön szürke kör - Ide tudsz lépni
+- Király körül piros - Checkbe van
+
+Speciális lépések:
+- En passant (Parasztnál):
+	- A gyalogoknak van még egy speciális lépése: a menet közbeni ütés (en passant ütés). Olyankor jöhet szóba, amikor egy gyalog kettőt lépett; ekkor egy megfelelő helyen lévő ellentétes színű gyalog a következő lépésben leütheti úgy, mintha az csak egyet lépett volna. Később ez a lehetőség megszűnik.
