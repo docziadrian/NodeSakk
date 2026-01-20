@@ -25,6 +25,8 @@ const getRoomById = (roomId) => {
 
 app.set("view engine", "ejs");
 app.use(express.static(path.join(__dirname, "public")));
+// Serve images and other static files from /assets (used by footer logo, etc.)
+app.use("/assets", express.static(path.join(__dirname, "assets")));
 
 app.get("/", (req, res) => {
   const { error = "", nickname = "", room = "" } = req.query;
