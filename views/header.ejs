@@ -82,6 +82,7 @@
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
+    <script src="/kliens.js"></script>
 
     <script>
       const socket = io();
@@ -91,7 +92,18 @@
       function updateRoomsList(rooms) {
         const roomsList = document.getElementById("rooms-list");
         roomsList.innerHTML = "";
-        rooms.forEach((room, index) => {
+
+        const availableRooms = rooms.filter(
+          (r) => r.players.length < r.maxPlayers
+        );
+
+        if (availableRooms.length === 0) {
+          roomsList.innerHTML =
+            '<p class="text-center text-gray-500 py-4">Nincs elérhető szoba</p>';
+          return;
+        }
+
+        availableRooms.forEach((room, index) => {
           const roomDiv = document.createElement("div");
           roomDiv.role = "listitem";
           roomDiv.className =
@@ -102,10 +114,10 @@
                 ${index + 1}
               </div>
               <div>
-                <p class="font-semibold text-gray-800">${room.id}</p>
-                <p class="text-sm text-gray-600">${
-                  room.players.length
-                } játékos</p>
+                <p class="font-semibold text-gray-800">${room.label}</p>
+                <p class="text-sm text-gray-600">${room.players.length}/${
+            room.maxPlayers
+          } játékos</p>
               </div>
             </div>
             <button
@@ -120,15 +132,17 @@
 
         document.querySelectorAll(".join-room-btn").forEach((button) => {
           button.addEventListener("click", () => {
-            const roomName = button.getAttribute("data-room");
+            const roomId = button.getAttribute("data-room");
             const username = document.querySelector("#username").value.trim();
             if (!username) {
               alert("Felhasználónév kötelező!");
               return;
             }
             currentUsername = username;
-            currentRoom = roomName;
-            socket.emit("join-room", { nickname: username, room: roomName });
+            currentRoom = roomId;
+            window.location.href = `/room?username=${encodeURIComponent(
+              username
+            )}&room=${encodeURIComponent(roomId)}`;
           });
         });
       }
@@ -213,10 +227,11 @@
           }
         });
 
-      socket.on("room-created", (room) => {
+      socket.on("room-created", (data) => {
+        currentRoom = data.id;
         window.location.href = `/room?username=${encodeURIComponent(
           currentUsername
-        )}&room=${encodeURIComponent(currentRoom)}`;
+        )}&room=${encodeURIComponent(data.id)}`;
       });
 
       socket.on("room-joined", (room) => {
@@ -227,6 +242,17 @@
 
       socket.on("room-exists", (name) => {
         alert(`A(z) ${name} szoba már létezik!`);
+      });
+
+      socket.on("room-full", () => {
+        alert("A szoba megtelt! Maximum 2 játékos lehet.");
+        currentRoom = null;
+        currentUsername = null;
+      });
+
+      socket.on("room-not-found", () => {
+        alert("A szoba nem található!");
+        window.location.href = "/";
       });
 
       socket.on("rooms-updated", (rooms) => {

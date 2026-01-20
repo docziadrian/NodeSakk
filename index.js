@@ -13,6 +13,7 @@ const createRoom = (roomId, creator) => {
     label: roomId,
     players: [creator],
     messages: [],
+    maxPlayers: 2,
   };
   ALL_ROOMS.push(room);
   return room;
@@ -39,42 +40,21 @@ app.get("/", (req, res) => {
   });
 });
 
-app.get("/main", (req, res) => {
-  const { nickname, room } = req.query;
-
-  if (!nickname || !room) {
-    return res.redirect(
-      `/?error=missingFileds&nickname=${nickname}&room=${room}`
-    );
-  }
-
-  const chatConfig = {
-    nickname,
-    roomId: room,
-    roomLabel: getRoomById(room).label,
-  };
-
-  res.render("main", { chatConfig });
-});
-
 app.get("/room", (req, res) => {
   const { username, room } = req.query;
-
   if (!username || !room) {
-    return res.redirect("/");
+    return res.redirect("/?error=missingFields");
   }
-
-  res.render("room");
+  const foundRoom = getRoomById(room);
+  res.render("room", {
+    username,
+    room,
+    players: foundRoom ? foundRoom.players : [],
+  });
 });
 
 io.on("connection", (socket) => {
   console.log(`Új felhasználó csatlakozott: ${socket.id}`);
-
-  socket.emit("rooms-updated", ALL_ROOMS);
-
-  socket.on("get-rooms", () => {
-    socket.emit("rooms-updated", ALL_ROOMS);
-  });
 
   socket.on("create-room", ({ name, creator }) => {
     if (!name || !creator) return;
@@ -118,7 +98,6 @@ io.on("connection", (socket) => {
       .to(room)
       .emit("system-message", `${nickname} kilépett a beszélgetésből.`);
     socket.leave(room);
-    io.emit("rooms-updated", ALL_ROOMS);
   });
 });
 

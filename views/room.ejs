@@ -4,6 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="output.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.1/css/all.min.css"
+      integrity="sha512-2SwdPD6INVrV/lHTZbO2nodKhrnDdJK9/kg2XD1r9uGqPo1cUbujc+IYdlYdEErWNu69gVcYgdxlmVmzTWnetw=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.1/css/fontawesome.min.css"
+      integrity="sha512-M5Kq4YVQrjg5c2wsZSn27Dkfm/2ALfxmun0vUE3mPiJyK53hQBHYCVAtvMYEC7ZXmYLg8DVG4tF8gD27WmDbsg=="
+      crossorigin="anonymous"
+      referrerpolicy="no-referrer"
+    />
     <title>Sakk - Játék</title>
   </head>
   <body class="min-h-screen bg-amber-100 flex">
@@ -55,8 +69,8 @@
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
+    <script src="/kliens.js"></script>
     <script>
-      const socket = io();
       const urlParams = new URLSearchParams(window.location.search);
       const username = urlParams.get("username");
       const roomName = urlParams.get("room");
@@ -65,52 +79,15 @@
         window.location.href = "/";
       }
 
-      document.getElementById(
-        "room-info"
-      ).textContent = `${username} - ${roomName}`;
-
-      socket.emit("join-room", { nickname: username, room: roomName });
-
-      function formatTime() {
-        const now = new Date();
-        return `${String(now.getHours()).padStart(2, "0")}:${String(
-          now.getMinutes()
-        ).padStart(2, "0")}`;
-      }
-
-      function addChatMessage(sender, message, isSystem = false) {
-        const messagesDiv = document.getElementById("chat-messages");
-        const messageDiv = document.createElement("div");
-
-        if (isSystem) {
-          messageDiv.className = "text-center text-gray-500 text-xs italic";
-          messageDiv.textContent = message;
-        } else {
-          messageDiv.className = "text-sm";
-          const time = formatTime();
-          messageDiv.innerHTML = `
-          <div class="bg-white rounded p-2 shadow-sm">
-            <span class="text-gray-400 text-xs">${time}</span>
-            <span class="font-semibold text-amber-600">${sender}</span>
-            <span class="text-gray-700"> → ${message}</span>
-          </div>
-        `;
-        }
-
-        messagesDiv.appendChild(messageDiv);
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
-      }
+      const gameClient = new ChessGameClient();
+      gameClient.init(username, roomName);
 
       document.getElementById("send-btn").addEventListener("click", () => {
         const input = document.getElementById("chat-input");
         const message = input.value.trim();
 
         if (message) {
-          socket.emit("send-message", {
-            room: roomName,
-            nickname: username,
-            message,
-          });
+          gameClient.sendMessage(message);
           input.value = "";
         }
       });
@@ -126,17 +103,15 @@
       document
         .getElementById("leave-game-btn")
         .addEventListener("click", () => {
-          socket.emit("leave-room", { nickname: username, room: roomName });
-          window.location.href = "/";
+          if (
+            confirm(
+              "Biztosan ki szeretnél lépni? Ez azt jelenti, hogy vesztettél!"
+            )
+          ) {
+            gameClient.leaveRoom();
+            window.location.href = "/";
+          }
         });
-
-      socket.on("new-message", (msg) => {
-        addChatMessage(msg.sender, msg.text);
-      });
-
-      socket.on("system-message", (msg) => {
-        addChatMessage("", msg, true);
-      });
 
       for (let row = 0; row < 8; row++) {
         for (let col = 0; col < 8; col++) {
