@@ -15,6 +15,20 @@ const Vezer = require("./classes/vezer");
 
 const ALL_ROOMS = [];
 
+const publicRoom = (room) => {
+  if (!room) return null;
+  return {
+    id: room.id,
+    label: room.label,
+    players: room.players,
+    maxPlayers: room.maxPlayers,
+  };
+};
+
+const emitRoomsUpdated = () => {
+  io.emit("rooms-updated", ALL_ROOMS.map(publicRoom));
+};
+
 const createRoom = (roomId, creator) => {
   const room = {
     id: roomId,
@@ -80,8 +94,8 @@ io.on("connection", (socket) => {
     }
     const room = createRoom(name, creator);
     socket.join(name);
-    socket.emit("room-created", room);
-    io.emit("rooms-updated", ALL_ROOMS);
+    socket.emit("room-created", publicRoom(room));
+    emitRoomsUpdated();
   });
 
   socket.on("join-room", ({ nickname, room }) => {
@@ -115,7 +129,7 @@ io.on("connection", (socket) => {
       .emit("system-message", `${nickname} csatlakozott a beszélgetéshez.`);
 
     socket.emit("room-joined", {
-      ...foundRoom,
+      ...publicRoom(foundRoom),
       playerColor: foundRoom.playerColors[nickname],
       gameState: foundRoom.game ? foundRoom.game.getGameState() : null,
     });
@@ -160,20 +174,118 @@ io.on("connection", (socket) => {
       move: result.move,
       gameState: result.gameState,
     });
+
+    if (result.gameOver) {
+      const winnerNickname =
+        result.gameOver.winner === null
+          ? null
+          : Object.entries(foundRoom.playerColors || {}).find(
+              ([, color]) => color === result.gameOver.winner
+            )?.[0] || null;
+
+      io.to(room).emit("game-over", {
+        winner: winnerNickname,
+        reason: result.gameOver.reason,
+      });
+    }
+  });
+
+  socket.on("get-moves", ({ room, nickname, from }, ack) => {
+    const foundRoom = getRoomById(room);
+    if (!foundRoom || !foundRoom.game) {
+      if (typeof ack === "function") ack({ ok: false, error: "Nincs ilyen szoba/játék." });
+      return;
+    }
+
+    const expectedColor = foundRoom.playerColors?.[nickname];
+    if (!expectedColor) {
+      if (typeof ack === "function") ack({ ok: false, error: "Ismeretlen játékos." });
+      return;
+    }
+
+    console.log("[get-moves]", {
+      room,
+      nickname,
+      expectedColor,
+      currentTurn: foundRoom.game.currentTurn,
+      from,
+    });
+
+    // Csak akkor kérhet lépéseket, ha ő következik
+    if (foundRoom.game.currentTurn !== expectedColor) {
+      const payload = {
+        from,
+        ok: false,
+        error: "Nem te jössz.",
+        currentTurn: foundRoom.game.currentTurn,
+      };
+      socket.emit("moves-for", payload);
+      if (typeof ack === "function") ack(payload);
+      return;
+    }
+
+    const piece = foundRoom.game.getPieceAt(from);
+    if (!piece) {
+      const payload = {
+        from,
+        ok: false,
+        error: "Nincs bábu ezen a mezőn.",
+        currentTurn: foundRoom.game.currentTurn,
+      };
+      socket.emit("moves-for", payload);
+      if (typeof ack === "function") ack(payload);
+      return;
+    }
+
+    if (piece.color !== expectedColor) {
+      const payload = {
+        from,
+        ok: false,
+        error: "Csak a saját bábuddal léphetsz.",
+        currentTurn: foundRoom.game.currentTurn,
+      };
+      socket.emit("moves-for", payload);
+      if (typeof ack === "function") ack(payload);
+      return;
+    }
+
+    const possible = foundRoom.game.getMovesFor(from);
+    const payload = {
+      from,
+      ok: true,
+      possible,
+      currentTurn: foundRoom.game.currentTurn,
+    };
+    socket.emit("moves-for", payload);
+    if (typeof ack === "function") ack(payload);
   });
 
   socket.on("leave-room", ({ nickname, room }) => {
     const foundRoom = getRoomById(room);
     if (foundRoom) {
+      // Kilépés = feladás -> a bent maradó nyer
+      const leavoColor = foundRoom.playerColors?.[nickname] || null;
+      const winnerColor = leavoColor ? (leavoColor === "white" ? "black" : "white") : null;
+      const winnerNickname =
+        winnerColor === null
+          ? null
+          : Object.entries(foundRoom.playerColors || {}).find(([, c]) => c === winnerColor)?.[0] ||
+            null;
+
       foundRoom.players = foundRoom.players.filter((n) => n !== nickname);
       if (foundRoom.playerColors) delete foundRoom.playerColors[nickname];
+
+      io.to(room).emit("game-over", {
+        winner: winnerNickname,
+        reason: "Feladás (kilépett a játékból).",
+      });
     }
     socket
       .to(room)
       .emit("system-message", `${nickname} kilépett a beszélgetésből.`);
     socket.leave(room);
     io.to(room).emit("player-left");
-    io.emit("rooms-updated", ALL_ROOMS);
+    emitRoomsUpdated();
   });
 
   socket.on("disconnect", () => {
@@ -182,11 +294,24 @@ io.on("connection", (socket) => {
     const foundRoom = getRoomById(room);
     if (!foundRoom) return;
 
+    // Kapcsolat bontása = feladás -> a bent maradó nyer
+    const leavoColor = foundRoom.playerColors?.[nickname] || null;
+    const winnerColor = leavoColor ? (leavoColor === "white" ? "black" : "white") : null;
+    const winnerNickname =
+      winnerColor === null
+        ? null
+        : Object.entries(foundRoom.playerColors || {}).find(([, c]) => c === winnerColor)?.[0] ||
+          null;
+
     foundRoom.players = foundRoom.players.filter((n) => n !== nickname);
     if (foundRoom.playerColors) delete foundRoom.playerColors[nickname];
 
     socket.to(room).emit("opponent-disconnected");
-    io.emit("rooms-updated", ALL_ROOMS);
+    io.to(room).emit("game-over", {
+      winner: winnerNickname,
+      reason: "Feladás (megszakadt a kapcsolat).",
+    });
+    emitRoomsUpdated();
   });
 });
 

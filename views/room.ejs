@@ -25,6 +25,7 @@
       <div class="bg-amber-600 text-white p-4">
         <h2 class="text-xl font-bold">Chat</h2>
         <p class="text-sm" id="room-info"></p>
+        <p class="text-xs opacity-90" id="turn-info"></p>
       </div>
 
       <div
@@ -120,6 +121,14 @@
             (row + col) % 2 === 0 ? "bg-amber-200" : "bg-amber-800";
           square.style.width = "70px";
           square.style.height = "70px";
+          square.style.display = "flex";
+          square.style.alignItems = "center";
+          square.style.justifyContent = "center";
+          square.style.fontSize = "38px";
+          // Fontos: a mező azonosítója x+y formában, hogy a bábuk könnyen rákerüljenek
+          square.id = `${col}${row}`;
+          square.dataset.x = col;
+          square.dataset.y = row;
           document.getElementById("chess-board").appendChild(square);
         }
       }

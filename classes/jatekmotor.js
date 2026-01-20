@@ -8,6 +8,8 @@ class JatekMotor {
     this.currentTurn = "white"; // "white" | "black"
     this.lastMove = null; // en passant-hoz
     this.moveHistory = [];
+    this.halfmoveClock = 0; // 50 lépés szabály (fél-lépésekben)
+    this.positionCounts = new Map(); // háromszori ismétléshez
   }
 
   _createEmptyBoard() {
@@ -69,6 +71,8 @@ class JatekMotor {
     this.currentTurn = "white";
     this.lastMove = null;
     this.moveHistory = [];
+    this.halfmoveClock = 0;
+    this.positionCounts = new Map();
   }
 
   /**
@@ -111,6 +115,7 @@ class JatekMotor {
       this._placePiece(new Gyalog("black", { x, y: 6 }), "gyalog");
     }
 
+    this._countPosition();
     return this.getGameState();
   }
 
@@ -143,6 +148,201 @@ class JatekMotor {
     return piece.getPossibleMoves(this.board, this.lastMove);
   }
 
+  // ===== Sakk / matt / patt =====
+
+  _opponent(color) {
+    return color === "white" ? "black" : "white";
+  }
+
+  _findKing(color) {
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 8; x++) {
+        const p = this.board[y][x];
+        if (p && p.type === "kiraly" && p.color === color) return { x, y };
+      }
+    }
+    return null;
+  }
+
+  _isSquareAttacked(pos, byColor) {
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 8; x++) {
+        const p = this.board[y][x];
+        if (!p || p.color !== byColor) continue;
+        if (typeof p.getPossibleMoves !== "function") continue;
+
+        const possible = p.getPossibleMoves(this.board, this.lastMove);
+        const attacks = possible.attacks || [];
+        const eps = possible.enPassant || [];
+
+        if (attacks.some((a) => a.x === pos.x && a.y === pos.y)) return true;
+        if (eps.some((e) => e.x === pos.x && e.y === pos.y)) return true;
+      }
+    }
+    return false;
+  }
+
+  isInCheck(color) {
+    const kingPos = this._findKing(color);
+    if (!kingPos) return false;
+    return this._isSquareAttacked(kingPos, this._opponent(color));
+  }
+
+  _cloneBoardShallow() {
+    return this.board.map((row) => row.slice());
+  }
+
+  _simulateMove(from, to, extra = null) {
+    const snapshot = {
+      board: this._cloneBoardShallow(),
+      lastMove: this.lastMove
+        ? { ...this.lastMove, from: { ...this.lastMove.from }, to: { ...this.lastMove.to } }
+        : null,
+    };
+
+    const piece = this.getPieceAt(from);
+
+    if (extra && extra.enPassantCapture) {
+      this.board[extra.enPassantCapture.y][extra.enPassantCapture.x] = null;
+    }
+
+    this.board[from.y][from.x] = null;
+    this.board[to.y][to.x] = piece;
+    if (piece) piece.position = { x: to.x, y: to.y };
+
+    if (extra && extra.promotionTo && piece) {
+      piece.type = extra.promotionTo;
+    }
+
+    return snapshot;
+  }
+
+  _restoreSnapshot(snapshot) {
+    this.board = snapshot.board;
+    this.lastMove = snapshot.lastMove;
+  }
+
+  getLegalMovesFor(pos) {
+    const piece = this.getPieceAt(pos);
+    if (!piece || typeof piece.getPossibleMoves !== "function") {
+      return { moves: [], attacks: [], enPassant: [], promotesToRank: false };
+    }
+
+    const possible = piece.getPossibleMoves(this.board, this.lastMove);
+    const legal = {
+      moves: [],
+      attacks: [],
+      enPassant: [],
+      promotesToRank: possible.promotesToRank || false,
+    };
+
+    const tryTo = (to, extra) => {
+      const snapshot = this._simulateMove(pos, to, extra);
+      const inCheck = this.isInCheck(piece.color);
+      this._restoreSnapshot(snapshot);
+      return !inCheck;
+    };
+
+    for (const m of possible.moves || []) {
+      if (tryTo(m)) legal.moves.push(m);
+    }
+    for (const a of possible.attacks || []) {
+      if (tryTo(a)) legal.attacks.push(a);
+    }
+    for (const ep of possible.enPassant || []) {
+      const extra = ep.capture ? { enPassantCapture: ep.capture } : null;
+      if (tryTo({ x: ep.x, y: ep.y }, extra)) legal.enPassant.push(ep);
+    }
+
+    return legal;
+  }
+
+  hasAnyLegalMove(color) {
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 8; x++) {
+        const p = this.board[y][x];
+        if (!p || p.color !== color) continue;
+        const legal = this.getLegalMovesFor({ x, y });
+        if ((legal.moves || []).length) return true;
+        if ((legal.attacks || []).length) return true;
+        if ((legal.enPassant || []).length) return true;
+      }
+    }
+    return false;
+  }
+
+  _insufficientMaterial() {
+    const pieces = [];
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 8; x++) {
+        const p = this.board[y][x];
+        if (p) pieces.push(p);
+      }
+    }
+
+    const nonKings = pieces.filter((p) => p.type !== "kiraly");
+    if (nonKings.length === 0) return true; // K vs K
+
+    if (nonKings.length === 1) {
+      const t = nonKings[0].type;
+      if (t === "futo" || t === "huszar") return true; // K+F vs K, K+H vs K
+    }
+
+    return false;
+  }
+
+  _positionKey() {
+    const parts = [this.currentTurn];
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 8; x++) {
+        const p = this.board[y][x];
+        if (!p) continue;
+        parts.push(`${p.type[0]}${p.color[0]}${x}${y}`);
+      }
+    }
+    parts.sort();
+
+    let ep = "";
+    if (this.lastMove && this.lastMove.pieceType === "gyalog") {
+      const movedTwo = Math.abs(this.lastMove.to.y - this.lastMove.from.y) === 2;
+      if (movedTwo) ep = `ep${this.lastMove.to.x}${this.lastMove.to.y}`;
+    }
+    return `${parts.join("|")}|${ep}`;
+  }
+
+  _countPosition() {
+    const key = this._positionKey();
+    const n = (this.positionCounts.get(key) || 0) + 1;
+    this.positionCounts.set(key, n);
+    return n;
+  }
+
+  _evaluateGameEnd(justMovedColor) {
+    const sideToMove = this.currentTurn;
+
+    if (this.halfmoveClock >= 100) {
+      return { isOver: true, winner: null, reason: "Döntetlen (50 lépés szabálya)." };
+    }
+
+    const rep = this._countPosition();
+    if (rep >= 3) {
+      return { isOver: true, winner: null, reason: "Döntetlen (háromszori ismétlés)." };
+    }
+
+    if (this._insufficientMaterial()) {
+      return { isOver: true, winner: null, reason: "Döntetlen (nincs elegendő mattadó erő)." };
+    }
+
+    const inCheck = this.isInCheck(sideToMove);
+    const hasMove = this.hasAnyLegalMove(sideToMove);
+    if (!hasMove) {
+      if (inCheck) return { isOver: true, winner: justMovedColor, reason: "Sakk-matt." };
+      return { isOver: true, winner: null, reason: "Döntetlen (patt)." };
+    }
+
+    return { isOver: false, winner: null, reason: "" };
+  }
+
   _switchTurn() {
     this.currentTurn = this.currentTurn === "white" ? "black" : "white";
   }
@@ -159,7 +359,7 @@ class JatekMotor {
     if (piece.color !== this.currentTurn)
       return { ok: false, error: "Nem te jössz." };
 
-    const possible = this.getMovesFor(from);
+    const possible = this.getLegalMovesFor(from);
     const isNormalMove = possible.moves.some((m) => m.x === to.x && m.y === to.y);
     const isAttack = possible.attacks.some((a) => a.x === to.x && a.y === to.y);
     const ep = (possible.enPassant || []).find((e) => e.x === to.x && e.y === to.y);
@@ -199,6 +399,11 @@ class JatekMotor {
     }
     this.board[to.y][to.x] = piece;
 
+    // 50 lépés szabály: ha ütés vagy gyaloglépés történt, nulláz
+    const pawnMove = piece.type === "gyalog";
+    const anyCapture = Boolean(captured || enPassantCaptured);
+    this.halfmoveClock = pawnMove || anyCapture ? 0 : this.halfmoveClock + 1;
+
     // Promóció (csak gyalognál)
     let promotion = null;
     if (piece.type === "gyalog" && typeof piece.promote === "function") {
@@ -233,9 +438,17 @@ class JatekMotor {
     };
     this.moveHistory.push(moveRecord);
 
+    const justMovedColor = piece.color;
     this._switchTurn();
 
-    return { ok: true, move: moveRecord, gameState: this.getGameState() };
+    const end = this._evaluateGameEnd(justMovedColor);
+
+    return {
+      ok: true,
+      move: moveRecord,
+      gameState: this.getGameState(),
+      gameOver: end.isOver ? { winner: end.winner, reason: end.reason } : null,
+    };
   }
 
   _createPromotedPiece(to, color, position) {
