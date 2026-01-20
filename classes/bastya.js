@@ -17,4 +17,8 @@ class Bastya {
         this.color = color;
         this.position = position;
     }
+
+    move(stepCount){
+        
+    }
 }
