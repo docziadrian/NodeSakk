@@ -25,6 +25,13 @@
         Elérhető szobák
       </h1>
       <div class="space-y-4">
+        <input
+          class="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-300"
+          type="text"
+          placeholder="Új Szoba neve..."
+          name=""
+          id=""
+        />
         <button
           class="w-full bg-amber-300 text-slate-700/90 py-3 rounded-lg font-semibold hover:bg-amber-600 transition-colors"
         >
@@ -56,5 +63,21 @@
         </div>
       </div>
     </div>
+
+    <script>
+      // Ha a felhasználó rákattint a "Belépés" gombra, becsatlakoztassuk a szobába
+      const joinButtons = document.querySelectorAll(
+        'button[aria-label^="Belépés a"]'
+      );
+      joinButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          const roomName = button
+            .getAttribute("aria-label")
+            .replace("Belépés a ", "")
+            .replace(" szobába", "");
+          console.log(`Becsatlakozás a ${roomName} szobába...`);
+        });
+      });
+    </script>
   </body>
 </html>
