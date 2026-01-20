@@ -192,3 +192,8 @@ class Gyalog {
     return allowed.has(to) ? to : "vezer";
   }
 }
+
+// Node (szerver) kompatibilitás
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = Gyalog;
+}

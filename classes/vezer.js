@@ -81,3 +81,8 @@ class Vezer {
         this.position = { x: to.x, y: to.y };
     }
 }
+
+// Node (szerver) kompatibilitás
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = Vezer;
+}
