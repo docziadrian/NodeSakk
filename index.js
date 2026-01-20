@@ -7,12 +7,15 @@ const path = require("path");
 
 const ALL_ROOMS = [];
 
-const createRoom = (roomId) => {
+const createRoom = (roomId, creator) => {
   const room = {
     id: roomId,
-    players: [],
+    label: roomId,
+    players: [creator],
+    messages: [],
   };
   ALL_ROOMS.push(room);
+  return room;
 };
 
 const ERRORS = {
@@ -54,21 +57,68 @@ app.get("/main", (req, res) => {
   res.render("main", { chatConfig });
 });
 
+app.get("/room", (req, res) => {
+  const { username, room } = req.query;
+
+  if (!username || !room) {
+    return res.redirect("/");
+  }
+
+  res.render("room");
+});
+
 io.on("connection", (socket) => {
   console.log(`Új felhasználó csatlakozott: ${socket.id}`);
 
+  socket.emit("rooms-updated", ALL_ROOMS);
+
+  socket.on("get-rooms", () => {
+    socket.emit("rooms-updated", ALL_ROOMS);
+  });
+
+  socket.on("create-room", ({ name, creator }) => {
+    if (!name || !creator) return;
+    if (ALL_ROOMS.find((r) => r.id === name)) {
+      socket.emit("room-exists", name);
+      return;
+    }
+    const room = createRoom(name, creator);
+    socket.join(name);
+    socket.emit("room-created", room);
+    io.emit("rooms-updated", ALL_ROOMS);
+  });
+
   socket.on("join-room", ({ nickname, room }) => {
+    const foundRoom = getRoomById(room);
+    if (foundRoom && !foundRoom.players.includes(nickname)) {
+      foundRoom.players.push(nickname);
+    }
     socket.join(room);
     socket
       .to(room)
       .emit("system-message", `${nickname} csatlakozott a beszélgetéshez.`);
+    socket.emit("room-joined", foundRoom);
+  });
+
+  socket.on("send-message", ({ room, nickname, message }) => {
+    const foundRoom = getRoomById(room);
+    if (foundRoom) {
+      const msg = { sender: nickname, text: message };
+      foundRoom.messages.push(msg);
+      io.to(room).emit("new-message", msg);
+    }
   });
 
   socket.on("leave-room", ({ nickname, room }) => {
+    const foundRoom = getRoomById(room);
+    if (foundRoom) {
+      foundRoom.players = foundRoom.players.filter((n) => n !== nickname);
+    }
     socket
       .to(room)
       .emit("system-message", `${nickname} kilépett a beszélgetésből.`);
-    socket.disconnect();
+    socket.leave(room);
+    io.emit("rooms-updated", ALL_ROOMS);
   });
 });
 

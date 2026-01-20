@@ -13,6 +13,9 @@
       </h1>
       <div class="space-y-4">
         <input
+          id="username"
+          onchange="this.value = this.value.trim();"
+          value=""
           type="text"
           placeholder="Felhasználóneved..."
           class="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-300"
@@ -26,58 +29,219 @@
       </h1>
       <div class="space-y-4">
         <input
+          id="room-name-input"
           class="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-300"
           type="text"
           placeholder="Új Szoba neve..."
           name=""
-          id=""
         />
         <button
+          id="create-room-button"
           class="w-full bg-amber-300 text-slate-700/90 py-3 rounded-lg font-semibold hover:bg-amber-600 transition-colors"
         >
           Új szobát csinálok
         </button>
-        <div role="list" class="space-y-3">
-          <div
-            role="listitem"
-            class="flex items-center justify-between bg-amber-50 border border-amber-100 rounded-lg px-4 py-3"
-          >
-            <div class="flex items-center space-x-3">
-              <div
-                class="w-10 h-10 flex items-center justify-center bg-amber-200 text-amber-700 font-bold rounded"
-              >
-                1
-              </div>
-              <div>
-                <p class="font-semibold text-gray-800">Szoba neve</p>
-              </div>
-            </div>
-
-            <button
-              class="px-4 py-2 bg-amber-500 text-white rounded-lg font-semibold hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-300"
-              aria-label="Belépés a #1 szobába"
-            >
-              Belépés
-            </button>
-          </div>
-        </div>
+        <div id="rooms-list" role="list" class="space-y-3"></div>
       </div>
     </div>
 
+    <div
+      id="chat-container"
+      style="display: none"
+      class="w-full max-w-md bg-white rounded-2xl shadow-lg p-8 mt-16"
+    >
+      <div class="flex items-center justify-between mb-6">
+        <h1 class="text-4xl font-extrabold text-amber-600">
+          <span id="current-room-name"></span>
+        </h1>
+        <button
+          id="leave-room-button"
+          class="px-4 py-2 bg-red-500 text-white rounded-lg font-semibold hover:bg-red-600"
+        >
+          Kilépés
+        </button>
+      </div>
+      <div
+        id="messages"
+        class="space-y-2 mb-4 h-96 overflow-y-auto bg-amber-50 p-4 rounded-lg"
+      ></div>
+      <div class="flex space-x-2">
+        <input
+          id="message-input"
+          type="text"
+          placeholder="Üzenet..."
+          class="flex-1 px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-300"
+        />
+        <button
+          id="send-message-button"
+          class="px-6 py-3 bg-amber-500 text-white rounded-lg font-semibold hover:bg-amber-600"
+        >
+          Küldés
+        </button>
+      </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+
     <script>
-      // Ha a felhasználó rákattint a "Belépés" gombra, becsatlakoztassuk a szobába
-      const joinButtons = document.querySelectorAll(
-        'button[aria-label^="Belépés a"]'
-      );
-      joinButtons.forEach((button) => {
-        button.addEventListener("click", () => {
-          const roomName = button
-            .getAttribute("aria-label")
-            .replace("Belépés a ", "")
-            .replace(" szobába", "");
-          console.log(`Becsatlakozás a ${roomName} szobába...`);
+      const socket = io();
+      let currentRoom = null;
+      let currentUsername = null;
+
+      function updateRoomsList(rooms) {
+        const roomsList = document.getElementById("rooms-list");
+        roomsList.innerHTML = "";
+        rooms.forEach((room, index) => {
+          const roomDiv = document.createElement("div");
+          roomDiv.role = "listitem";
+          roomDiv.className =
+            "flex items-center justify-between bg-amber-50 border border-amber-100 rounded-lg px-4 py-3";
+          roomDiv.innerHTML = `
+            <div class="flex items-center space-x-3">
+              <div class="w-10 h-10 flex items-center justify-center bg-amber-200 text-amber-700 font-bold rounded">
+                ${index + 1}
+              </div>
+              <div>
+                <p class="font-semibold text-gray-800">${room.id}</p>
+                <p class="text-sm text-gray-600">${
+                  room.players.length
+                } játékos</p>
+              </div>
+            </div>
+            <button
+              class="join-room-btn px-4 py-2 bg-amber-500 text-white rounded-lg font-semibold hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-300"
+              data-room="${room.id}"
+            >
+              Belépés
+            </button>
+          `;
+          roomsList.appendChild(roomDiv);
         });
+
+        document.querySelectorAll(".join-room-btn").forEach((button) => {
+          button.addEventListener("click", () => {
+            const roomName = button.getAttribute("data-room");
+            const username = document.querySelector("#username").value.trim();
+            if (!username) {
+              alert("Felhasználónév kötelező!");
+              return;
+            }
+            currentUsername = username;
+            currentRoom = roomName;
+            socket.emit("join-room", { nickname: username, room: roomName });
+          });
+        });
+      }
+
+      function showChatInterface() {
+        document.querySelector(".min-h-screen").style.display = "none";
+        document.getElementById("chat-container").style.display = "block";
+        document.getElementById("current-room-name").textContent = currentRoom;
+      }
+
+      function hideChatInterface() {
+        document.querySelector(".min-h-screen").style.display = "flex";
+        document.getElementById("chat-container").style.display = "none";
+        document.getElementById("messages").innerHTML = "";
+      }
+
+      function addMessage(msg, isSystem = false) {
+        const messagesDiv = document.getElementById("messages");
+        const messageDiv = document.createElement("div");
+        messageDiv.className = isSystem
+          ? "text-center text-gray-500 text-sm italic"
+          : "bg-white p-3 rounded-lg shadow";
+        messageDiv.innerHTML = isSystem
+          ? msg
+          : `<span class="font-semibold text-amber-600">${msg.sender}:</span> <span class="text-gray-800">${msg.text}</span>`;
+        messagesDiv.appendChild(messageDiv);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      }
+
+      const createRoomButton = document.querySelector("#create-room-button");
+      createRoomButton.addEventListener("click", () => {
+        const roomNameInput = document.querySelector("#room-name-input");
+        const roomName = roomNameInput.value.trim();
+        const username = document.querySelector("#username").value.trim();
+        if (!roomName || roomName.length < 3 || roomName.length > 12) {
+          alert("Validáció hiba: (minimum 3, maximum 12 karakter) szobanév.");
+          return;
+        }
+        if (!username) {
+          alert("Felhasználónév kötelező!");
+          return;
+        }
+        currentUsername = username;
+        currentRoom = roomName;
+        socket.emit("create-room", { name: roomName, creator: username });
+        roomNameInput.value = "";
       });
+
+      document
+        .getElementById("send-message-button")
+        .addEventListener("click", () => {
+          const messageInput = document.getElementById("message-input");
+          const message = messageInput.value.trim();
+          if (message && currentRoom && currentUsername) {
+            socket.emit("send-message", {
+              room: currentRoom,
+              nickname: currentUsername,
+              message,
+            });
+            messageInput.value = "";
+          }
+        });
+
+      document
+        .getElementById("message-input")
+        .addEventListener("keypress", (e) => {
+          if (e.key === "Enter") {
+            document.getElementById("send-message-button").click();
+          }
+        });
+
+      document
+        .getElementById("leave-room-button")
+        .addEventListener("click", () => {
+          if (currentRoom && currentUsername) {
+            socket.emit("leave-room", {
+              nickname: currentUsername,
+              room: currentRoom,
+            });
+            hideChatInterface();
+            currentRoom = null;
+          }
+        });
+
+      socket.on("room-created", (room) => {
+        window.location.href = `/room?username=${encodeURIComponent(
+          currentUsername
+        )}&room=${encodeURIComponent(currentRoom)}`;
+      });
+
+      socket.on("room-joined", (room) => {
+        window.location.href = `/room?username=${encodeURIComponent(
+          currentUsername
+        )}&room=${encodeURIComponent(currentRoom)}`;
+      });
+
+      socket.on("room-exists", (name) => {
+        alert(`A(z) ${name} szoba már létezik!`);
+      });
+
+      socket.on("rooms-updated", (rooms) => {
+        updateRoomsList(rooms);
+      });
+
+      socket.on("new-message", (msg) => {
+        addMessage(msg);
+      });
+
+      socket.on("system-message", (msg) => {
+        addMessage(msg, true);
+      });
+
+      socket.emit("get-rooms");
     </script>
   </body>
 </html>

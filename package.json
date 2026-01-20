@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon index.js",
-    "start": "node index.js"
+    "start": "node index.js",
+    "css": "tailwindcss -i ./public/input.css -o ./public/output.css --watch"
   },
   "author": "",
   "license": "ISC",
