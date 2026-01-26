@@ -4,11 +4,12 @@ class ChessGameClient {
     this.username = null;
     this.roomName = null;
     this.playerColor = null;
+    this.gameType = null;
     this.gameState = null;
     this.selectedFrom = null;
     this.possibleTargets = null;
     this.highlighted = new Set();
-    this.markers = new Set(); // kirakott “pöttyök” / jelölők id alapján
+    this.markers = new Set();
     this.setupSocketListeners();
     this.setupBoardListeners();
   }
@@ -23,6 +24,7 @@ class ChessGameClient {
     this.socket.on("room-joined", (data) => {
       if (data && data.playerColor) {
         this.playerColor = data.playerColor;
+        this.gameType = data.gameType;
         this.updatePlayerInfo();
       }
       if (data && data.gameState) {
@@ -95,7 +97,11 @@ class ChessGameClient {
         return;
       }
 
-      this.possibleTargets = data.possible || { moves: [], attacks: [], enPassant: [] };
+      this.possibleTargets = data.possible || {
+        moves: [],
+        attacks: [],
+        enPassant: [],
+      };
       this.highlightTargets();
     });
   }
@@ -154,16 +160,18 @@ class ChessGameClient {
   formatTime() {
     const now = new Date();
     return `${String(now.getHours()).padStart(2, "0")}:${String(
-      now.getMinutes()
+      now.getMinutes(),
     ).padStart(2, "0")}`;
   }
 
   updatePlayerInfo() {
     const roomInfo = document.getElementById("room-info");
     if (roomInfo) {
+      const gameTypeText =
+        this.gameType === "fun" ? "Vicces sakk" : "Normál sakk";
       roomInfo.textContent = `${this.username} - ${this.roomName} (${
         this.playerColor === "white" ? "Fehér" : "Fekete"
-      })`;
+      }) - ${gameTypeText}`;
     }
     this.updateTurnInfo();
   }
@@ -233,7 +241,9 @@ class ChessGameClient {
   setupBoardListeners() {
     const board = document.getElementById("chess-board");
     if (!board) {
-      window.addEventListener("load", () => this.setupBoardListeners(), { once: true });
+      window.addEventListener("load", () => this.setupBoardListeners(), {
+        once: true,
+      });
       return;
     }
     if (board.dataset.listenersAttached === "1") return;
@@ -255,7 +265,11 @@ class ChessGameClient {
 
   getPieceAtClient(pos) {
     const pieces = this.gameState?.pieces || [];
-    return pieces.find((p) => p?.position?.x === pos.x && p?.position?.y === pos.y) || null;
+    return (
+      pieces.find(
+        (p) => p?.position?.x === pos.x && p?.position?.y === pos.y,
+      ) || null
+    );
   }
 
   onSquareClick(pos) {
@@ -272,34 +286,42 @@ class ChessGameClient {
       this.possibleTargets = null;
       this.highlightSelection();
 
-      this.socket.emit("get-moves", {
-        room: this.roomName,
-        nickname: this.username,
-        from: this.selectedFrom,
-      }, (data) => {
-        // Ack válasz (biztosan megjön, ha a szerver kezeli)
-        if (!data) return;
-        console.log("get-moves ack:", data);
+      this.socket.emit(
+        "get-moves",
+        {
+          room: this.roomName,
+          nickname: this.username,
+          from: this.selectedFrom,
+        },
+        (data) => {
+          // Ack válasz (biztosan megjön, ha a szerver kezeli)
+          if (!data) return;
+          console.log("get-moves ack:", data);
 
-        // ugyanaz a feldolgozás, mint a moves-for eventnél
-        if (this.gameState && data.currentTurn) {
-          this.gameState.currentTurn = data.currentTurn;
-          this.updateTurnInfo();
-        }
-        if (!data.ok) {
-          if (data.error) this.showNotification(data.error);
-          return;
-        }
-        if (
-          this.selectedFrom &&
-          data.from &&
-          data.from.x === this.selectedFrom.x &&
-          data.from.y === this.selectedFrom.y
-        ) {
-          this.possibleTargets = data.possible || { moves: [], attacks: [], enPassant: [] };
-          this.highlightTargets();
-        }
-      });
+          // ugyanaz a feldolgozás, mint a moves-for eventnél
+          if (this.gameState && data.currentTurn) {
+            this.gameState.currentTurn = data.currentTurn;
+            this.updateTurnInfo();
+          }
+          if (!data.ok) {
+            if (data.error) this.showNotification(data.error);
+            return;
+          }
+          if (
+            this.selectedFrom &&
+            data.from &&
+            data.from.x === this.selectedFrom.x &&
+            data.from.y === this.selectedFrom.y
+          ) {
+            this.possibleTargets = data.possible || {
+              moves: [],
+              attacks: [],
+              enPassant: [],
+            };
+            this.highlightTargets();
+          }
+        },
+      );
       console.log("get-moves elküldve:", {
         room: this.roomName,
         nickname: this.username,
@@ -318,9 +340,15 @@ class ChessGameClient {
     }
 
     const canGo =
-      (this.possibleTargets?.moves || []).some((m) => m.x === pos.x && m.y === pos.y) ||
-      (this.possibleTargets?.attacks || []).some((a) => a.x === pos.x && a.y === pos.y) ||
-      (this.possibleTargets?.enPassant || []).some((ep) => ep.x === pos.x && ep.y === pos.y);
+      (this.possibleTargets?.moves || []).some(
+        (m) => m.x === pos.x && m.y === pos.y,
+      ) ||
+      (this.possibleTargets?.attacks || []).some(
+        (a) => a.x === pos.x && a.y === pos.y,
+      ) ||
+      (this.possibleTargets?.enPassant || []).some(
+        (ep) => ep.x === pos.x && ep.y === pos.y,
+      );
 
     if (canGo) {
       this.makeMove(this.selectedFrom, pos);
@@ -445,7 +473,7 @@ class ChessGameClient {
       "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50";
     modal.innerHTML = `
       <div class="bg-white rounded-2xl p-8 max-w-md text-center shadow-2xl">
-        <div class="text-6xl mb-4">${isWinner ? "🎉" : "😢"}</div>
+        <div class="text-6xl mb-4">${isWinner ? ":)" : ":("}</div>
         <h2 class="text-3xl font-bold mb-4 ${
           isWinner ? "text-green-600" : "text-red-600"
         }">

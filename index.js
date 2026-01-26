@@ -6,6 +6,7 @@ const ejs = require("ejs");
 const path = require("path");
 
 const JatekMotor = require("./classes/jatekmotor");
+const ViccesJatekMotor = require("./classes/viccesJatekmotor");
 const Gyalog = require("./classes/gyalog");
 const Bastya = require("./classes/bastya");
 const Futo = require("./classes/futo");
@@ -22,6 +23,7 @@ const publicRoom = (room) => {
     label: room.label,
     players: room.players,
     maxPlayers: room.maxPlayers,
+    gameType: room.gameType,
   };
 };
 
@@ -29,20 +31,24 @@ const emitRoomsUpdated = () => {
   io.emit("rooms-updated", ALL_ROOMS.map(publicRoom));
 };
 
-const createRoom = (roomId, creator) => {
+const createRoom = (roomId, creator, gameType = "classic") => {
   const room = {
     id: roomId,
     label: roomId,
     players: [creator],
     messages: [],
     maxPlayers: 2,
-    playerColors: {}, // nickname -> "white"|"black"
-    game: null, // JatekMotor példány
+    gameType: gameType,
+    playerColors: {},
+    game: null,
   };
   room.playerColors[creator] = "white";
-  room.game = new JatekMotor({
+
+  const MotorClass = gameType === "fun" ? ViccesJatekMotor : JatekMotor;
+  room.game = new MotorClass({
     pieceClasses: { Gyalog, Bastya, Futo, Huszar, Kiraly, Vezer },
   });
+
   ALL_ROOMS.push(room);
   return room;
 };
@@ -86,13 +92,18 @@ app.get("/room", (req, res) => {
 io.on("connection", (socket) => {
   console.log(`Új felhasználó csatlakozott: ${socket.id}`);
 
-  socket.on("create-room", ({ name, creator }) => {
+  // JAVÍTÁS: amikor valaki csatlakozik, küldjük el neki a szobák listáját
+  socket.on("get-rooms", () => {
+    socket.emit("rooms-updated", ALL_ROOMS.map(publicRoom));
+  });
+
+  socket.on("create-room", ({ name, creator, gameType }) => {
     if (!name || !creator) return;
     if (ALL_ROOMS.find((r) => r.id === name)) {
       socket.emit("room-exists", name);
       return;
     }
-    const room = createRoom(name, creator);
+    const room = createRoom(name, creator, gameType || "classic");
     socket.join(name);
     socket.emit("room-created", publicRoom(room));
     emitRoomsUpdated();
@@ -139,6 +150,9 @@ io.on("connection", (socket) => {
       const gameState = foundRoom.game.initClassicSetup();
       io.to(room).emit("game-start", { gameState });
     }
+
+    // Frissítjük a szobák listáját mindenkinek
+    emitRoomsUpdated();
   });
 
   socket.on("send-message", ({ room, nickname, message }) => {
@@ -180,7 +194,7 @@ io.on("connection", (socket) => {
         result.gameOver.winner === null
           ? null
           : Object.entries(foundRoom.playerColors || {}).find(
-              ([, color]) => color === result.gameOver.winner
+              ([, color]) => color === result.gameOver.winner,
             )?.[0] || null;
 
       io.to(room).emit("game-over", {
@@ -193,13 +207,15 @@ io.on("connection", (socket) => {
   socket.on("get-moves", ({ room, nickname, from }, ack) => {
     const foundRoom = getRoomById(room);
     if (!foundRoom || !foundRoom.game) {
-      if (typeof ack === "function") ack({ ok: false, error: "Nincs ilyen szoba/játék." });
+      if (typeof ack === "function")
+        ack({ ok: false, error: "Nincs ilyen szoba/játék." });
       return;
     }
 
     const expectedColor = foundRoom.playerColors?.[nickname];
     if (!expectedColor) {
-      if (typeof ack === "function") ack({ ok: false, error: "Ismeretlen játékos." });
+      if (typeof ack === "function")
+        ack({ ok: false, error: "Ismeretlen játékos." });
       return;
     }
 
@@ -265,12 +281,17 @@ io.on("connection", (socket) => {
     if (foundRoom) {
       // Kilépés = feladás -> a bent maradó nyer
       const leavoColor = foundRoom.playerColors?.[nickname] || null;
-      const winnerColor = leavoColor ? (leavoColor === "white" ? "black" : "white") : null;
+      const winnerColor = leavoColor
+        ? leavoColor === "white"
+          ? "black"
+          : "white"
+        : null;
       const winnerNickname =
         winnerColor === null
           ? null
-          : Object.entries(foundRoom.playerColors || {}).find(([, c]) => c === winnerColor)?.[0] ||
-            null;
+          : Object.entries(foundRoom.playerColors || {}).find(
+              ([, c]) => c === winnerColor,
+            )?.[0] || null;
 
       foundRoom.players = foundRoom.players.filter((n) => n !== nickname);
       if (foundRoom.playerColors) delete foundRoom.playerColors[nickname];
@@ -296,12 +317,17 @@ io.on("connection", (socket) => {
 
     // Kapcsolat bontása = feladás -> a bent maradó nyer
     const leavoColor = foundRoom.playerColors?.[nickname] || null;
-    const winnerColor = leavoColor ? (leavoColor === "white" ? "black" : "white") : null;
+    const winnerColor = leavoColor
+      ? leavoColor === "white"
+        ? "black"
+        : "white"
+      : null;
     const winnerNickname =
       winnerColor === null
         ? null
-        : Object.entries(foundRoom.playerColors || {}).find(([, c]) => c === winnerColor)?.[0] ||
-          null;
+        : Object.entries(foundRoom.playerColors || {}).find(
+            ([, c]) => c === winnerColor,
+          )?.[0] || null;
 
     foundRoom.players = foundRoom.players.filter((n) => n !== nickname);
     if (foundRoom.playerColors) delete foundRoom.playerColors[nickname];
